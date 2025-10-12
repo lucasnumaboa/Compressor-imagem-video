@@ -1,0 +1,22 @@
+{
+  "name": "compressor-web",
+  "version": "1.0.0",
+  "description": "Compressor de imagens e vídeos online",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["compressor", "imagem", "video", "ffmpeg"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.10.1",
+    "@ffmpeg/core": "^0.10.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
