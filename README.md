@@ -2,6 +2,10 @@
 
 Um aplicativo web moderno para compressão de imagens e vídeos, utilizando tecnologias web avançadas.
 
+## Demo
+
+Acesse a demonstração online: [https://compressor.manerostream.com.br/](https://compressor.manerostream.com.br/)
+
 ## Funcionalidades
 
 - **Compressão de Imagens**: Reduz o tamanho de arquivos de imagem mantendo boa qualidade visual
