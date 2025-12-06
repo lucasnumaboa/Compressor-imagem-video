@@ -1,6 +1,6 @@
 // Variáveis globais
-let selectedImage = null;
-let selectedVideo = null;
+let selectedImages = [];
+let selectedVideos = [];
 let ffmpeg = null;
 
 // Funções de utilidade
@@ -29,6 +29,49 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+// Atualizar lista de arquivos selecionados
+function updateFilesList(type) {
+  const filesList = document.getElementById(`${type}-files-list`);
+  const files = type === 'image' ? selectedImages : selectedVideos;
+  
+  if (files.length === 0) {
+    filesList.classList.remove('active');
+    return;
+  }
+  
+  filesList.classList.add('active');
+  
+  let html = `<h3>${files.length} arquivo(s) selecionado(s):</h3>`;
+  files.forEach((file, index) => {
+    html += `
+      <div class="file-item">
+        <span class="file-item-name">${file.name}</span>
+        <span class="file-item-size">${formatBytes(file.size)}</span>
+        <button class="file-item-remove" onclick="removeFile('${type}', ${index})">Remover</button>
+      </div>
+    `;
+  });
+  
+  filesList.innerHTML = html;
+}
+
+// Remover arquivo da lista
+function removeFile(type, index) {
+  if (type === 'image') {
+    selectedImages.splice(index, 1);
+  } else {
+    selectedVideos.splice(index, 1);
+  }
+  
+  updateFilesList(type);
+  
+  const btn = document.getElementById(`compress-${type}-btn`);
+  if ((type === 'image' && selectedImages.length === 0) || 
+      (type === 'video' && selectedVideos.length === 0)) {
+    btn.disabled = true;
+  }
+}
+
 // Inicializar FFmpeg
 async function initFFmpeg() {
   try {
@@ -48,154 +91,247 @@ async function initFFmpeg() {
   }
 }
 
-// Comprimir imagem
-async function compressImage(file) {
-  if (!file) return;
+// Comprimir uma imagem
+async function compressImageFile(file) {
+  const quality = parseInt(document.getElementById('image-quality').value) / 100;
+  const maxWidth = parseInt(document.getElementById('image-max-width').value);
   
-  showProgress('Comprimindo imagem...');
+  // Criar um canvas para redimensionar e comprimir a imagem
+  const img = new Image();
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Carregar a imagem
+  img.src = URL.createObjectURL(file);
+  await new Promise(resolve => {
+    img.onload = resolve;
+  });
+  
+  // Calcular as dimensões
+  let width = img.width;
+  let height = img.height;
+  
+  if (width > maxWidth) {
+    const ratio = maxWidth / width;
+    width = maxWidth;
+    height = height * ratio;
+  }
+  
+  // Redimensionar a imagem
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(img, 0, 0, width, height);
+  
+  // Comprimir a imagem
+  const compressedBlob = await new Promise(resolve => {
+    canvas.toBlob(resolve, 'image/jpeg', quality);
+  });
+  
+  return {
+    blob: compressedBlob,
+    fileName: file.name.replace(/\.[^/.]+$/, '') + '_comprimido.jpg',
+    originalSize: file.size,
+    compressedSize: compressedBlob.size
+  };
+}
+
+// Comprimir múltiplas imagens
+async function compressImages(files) {
+  if (!files || files.length === 0) return;
+  
+  showProgress('Comprimindo imagens...');
   
   try {
-    const quality = parseInt(document.getElementById('image-quality').value) / 100;
-    const maxWidth = parseInt(document.getElementById('image-max-width').value);
+    const results = [];
     
-    // Criar um canvas para redimensionar e comprimir a imagem
-    const img = new Image();
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Carregar a imagem
-    img.src = URL.createObjectURL(file);
-    await new Promise(resolve => {
-      img.onload = resolve;
-    });
-    
-    // Calcular as dimensões
-    let width = img.width;
-    let height = img.height;
-    
-    if (width > maxWidth) {
-      const ratio = maxWidth / width;
-      width = maxWidth;
-      height = height * ratio;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      document.getElementById('progress-text').textContent = `Comprimindo imagem ${i + 1} de ${files.length}...`;
+      
+      const result = await compressImageFile(file);
+      results.push(result);
     }
     
-    // Redimensionar a imagem
-    canvas.width = width;
-    canvas.height = height;
-    ctx.drawImage(img, 0, 0, width, height);
+    // Calcular estatísticas
+    let totalOriginal = 0;
+    let totalCompressed = 0;
     
-    // Comprimir a imagem
-    const compressedBlob = await new Promise(resolve => {
-      canvas.toBlob(resolve, 'image/jpeg', quality);
+    results.forEach(result => {
+      totalOriginal += result.originalSize;
+      totalCompressed += result.compressedSize;
     });
     
-    // Mostrar o resultado
-    const originalSize = formatBytes(file.size);
-    const compressedSize = formatBytes(compressedBlob.size);
-    const compressionRatio = Math.round((1 - (compressedBlob.size / file.size)) * 100);
+    const totalReduction = Math.round((1 - (totalCompressed / totalOriginal)) * 100);
     
-    const downloadURL = URL.createObjectURL(compressedBlob);
-    const fileName = file.name.replace(/\.[^/.]+$/, '') + '_comprimido.jpg';
+    // Armazenar resultados para download
+    window.compressedFilesData = results;
     
-    document.getElementById('image-result').innerHTML = `
-      <div class="file-info">
-        <p><strong>Tamanho original:</strong> ${originalSize}</p>
-        <p><strong>Tamanho comprimido:</strong> ${compressedSize}</p>
-        <p><strong>Redução:</strong> ${compressionRatio}%</p>
+    // Mostrar os resultados
+    let html = '<h3>Imagens comprimidas com sucesso!</h3>';
+    html += `
+      <div class="file-info" style="background-color: rgba(46, 204, 113, 0.1); border-left-color: #2ecc71;">
+        <p><strong>Resumo Total:</strong></p>
+        <p><strong>Arquivos processados:</strong> ${results.length}</p>
+        <p><strong>Tamanho original total:</strong> ${formatBytes(totalOriginal)}</p>
+        <p><strong>Tamanho comprimido total:</strong> ${formatBytes(totalCompressed)}</p>
+        <p><strong>Redução total:</strong> ${totalReduction}%</p>
       </div>
-      <a href="${downloadURL}" download="${fileName}" class="download-btn">Baixar imagem comprimida</a>
+      <button class="download-btn" onclick="downloadCompressedFiles('image')" style="display: block; width: 100%; margin-top: 1rem; padding: 0.8rem;">Baixar Arquivos</button>
     `;
     
+    document.getElementById('image-result').innerHTML = html;
     document.getElementById('image-result').classList.add('active');
     hideProgress();
   } catch (error) {
-    console.error('Erro ao comprimir a imagem:', error);
-    alert('Erro ao comprimir a imagem. Por favor, tente novamente.');
+    console.error('Erro ao comprimir as imagens:', error);
+    alert('Erro ao comprimir as imagens. Por favor, tente novamente.');
     hideProgress();
   }
 }
 
-// Comprimir vídeo
-async function compressVideo(file) {
-  if (!file || !ffmpeg) {
-    console.error('Vídeo não selecionado ou FFmpeg não carregado');
+// Comprimir um vídeo
+async function compressVideoFile(file, index, total) {
+  const crf = document.getElementById('video-crf').value;
+  const qualityOption = document.getElementById('video-quality').value;
+  
+  let resolution;
+  switch (qualityOption) {
+    case 'high':
+      resolution = '1920x1080';
+      break;
+    case 'medium':
+      resolution = '1280x720';
+      break;
+    case 'low':
+      resolution = '854x480';
+      break;
+    default:
+      resolution = '1280x720';
+  }
+  
+  // Carregar o vídeo no FFmpeg
+  const inputFileName = `input_${index}.mp4`;
+  const outputFileName = `output_${index}.mp4`;
+  
+  document.getElementById('progress-text').textContent = `Carregando vídeo ${index} de ${total}...`;
+  const fileData = await file.arrayBuffer();
+  ffmpeg.FS('writeFile', inputFileName, new Uint8Array(fileData));
+  
+  // Comprimir o vídeo
+  document.getElementById('progress-text').textContent = `Comprimindo vídeo ${index} de ${total}...`;
+  await ffmpeg.run(
+    '-i', inputFileName,
+    '-vf', `scale=${resolution}`,
+    '-c:v', 'libx264',
+    '-crf', crf,
+    '-preset', 'medium',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    outputFileName
+  );
+  
+  // Obter o vídeo comprimido
+  const data = ffmpeg.FS('readFile', outputFileName);
+  const compressedBlob = new Blob([data.buffer], { type: 'video/mp4' });
+  
+  // Limpar arquivos temporários
+  ffmpeg.FS('unlink', inputFileName);
+  ffmpeg.FS('unlink', outputFileName);
+  
+  return {
+    blob: compressedBlob,
+    fileName: file.name.replace(/\.[^/.]+$/, '') + '_comprimido.mp4',
+    originalSize: file.size,
+    compressedSize: compressedBlob.size
+  };
+}
+
+// Comprimir múltiplos vídeos
+async function compressVideos(files) {
+  if (!files || files.length === 0 || !ffmpeg) {
+    console.error('Vídeos não selecionados ou FFmpeg não carregado');
     return;
   }
   
   showProgress('Preparando para compressão...');
   
   try {
-    const crf = document.getElementById('video-crf').value;
-    const qualityOption = document.getElementById('video-quality').value;
+    const results = [];
     
-    let resolution;
-    switch (qualityOption) {
-      case 'high':
-        resolution = '1920x1080';
-        break;
-      case 'medium':
-        resolution = '1280x720';
-        break;
-      case 'low':
-        resolution = '854x480';
-        break;
-      default:
-        resolution = '1280x720';
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const result = await compressVideoFile(file, i, files.length);
+      results.push(result);
     }
     
-    // Carregar o vídeo no FFmpeg
-    const inputFileName = 'input.mp4';
-    const outputFileName = 'output.mp4';
+    // Calcular estatísticas
+    let totalOriginal = 0;
+    let totalCompressed = 0;
     
-    document.getElementById('progress-text').textContent = 'Carregando vídeo...';
-    const fileData = await file.arrayBuffer();
-    ffmpeg.FS('writeFile', inputFileName, new Uint8Array(fileData));
+    results.forEach(result => {
+      totalOriginal += result.originalSize;
+      totalCompressed += result.compressedSize;
+    });
     
-    // Comprimir o vídeo
-    document.getElementById('progress-text').textContent = 'Comprimindo vídeo...';
-    await ffmpeg.run(
-      '-i', inputFileName,
-      '-vf', `scale=${resolution}`,
-      '-c:v', 'libx264',
-      '-crf', crf,
-      '-preset', 'medium',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',
-      outputFileName
-    );
+    const totalReduction = Math.round((1 - (totalCompressed / totalOriginal)) * 100);
     
-    // Obter o vídeo comprimido
-    const data = ffmpeg.FS('readFile', outputFileName);
-    const compressedBlob = new Blob([data.buffer], { type: 'video/mp4' });
+    // Armazenar resultados para download
+    window.compressedFilesData = results;
     
-    // Mostrar o resultado
-    const originalSize = formatBytes(file.size);
-    const compressedSize = formatBytes(compressedBlob.size);
-    const compressionRatio = Math.round((1 - (compressedBlob.size / file.size)) * 100);
-    
-    const downloadURL = URL.createObjectURL(compressedBlob);
-    const fileName = file.name.replace(/\.[^/.]+$/, '') + '_comprimido.mp4';
-    
-    document.getElementById('video-result').innerHTML = `
-      <div class="file-info">
-        <p><strong>Tamanho original:</strong> ${originalSize}</p>
-        <p><strong>Tamanho comprimido:</strong> ${compressedSize}</p>
-        <p><strong>Redução:</strong> ${compressionRatio}%</p>
+    // Mostrar os resultados
+    let html = '<h3>Vídeos comprimidos com sucesso!</h3>';
+    html += `
+      <div class="file-info" style="background-color: rgba(46, 204, 113, 0.1); border-left-color: #2ecc71;">
+        <p><strong>Resumo Total:</strong></p>
+        <p><strong>Arquivos processados:</strong> ${results.length}</p>
+        <p><strong>Tamanho original total:</strong> ${formatBytes(totalOriginal)}</p>
+        <p><strong>Tamanho comprimido total:</strong> ${formatBytes(totalCompressed)}</p>
+        <p><strong>Redução total:</strong> ${totalReduction}%</p>
       </div>
-      <video controls style="max-width: 100%; margin-bottom: 1rem;">
-        <source src="${downloadURL}" type="video/mp4">
-        Seu navegador não suporta a reprodução de vídeos.
-      </video>
-      <a href="${downloadURL}" download="${fileName}" class="download-btn">Baixar vídeo comprimido</a>
+      <button class="download-btn" onclick="downloadCompressedFiles('video')" style="display: block; width: 100%; margin-top: 1rem; padding: 0.8rem;">Baixar Arquivos</button>
     `;
     
+    document.getElementById('video-result').innerHTML = html;
     document.getElementById('video-result').classList.add('active');
     hideProgress();
   } catch (error) {
-    console.error('Erro ao comprimir o vídeo:', error);
-    alert('Erro ao comprimir o vídeo. Por favor, tente novamente.');
+    console.error('Erro ao comprimir os vídeos:', error);
+    alert('Erro ao comprimir os vídeos. Por favor, tente novamente.');
     hideProgress();
+  }
+}
+
+// Função para baixar arquivos comprimidos
+function downloadCompressedFiles(type) {
+  const files = window.compressedFilesData;
+  
+  if (!files || files.length === 0) {
+    alert('Nenhum arquivo para baixar');
+    return;
+  }
+  
+  if (files.length === 1) {
+    // Se houver apenas um arquivo, baixar diretamente
+    const file = files[0];
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(file.blob);
+    link.download = file.fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    // Se houver múltiplos arquivos, baixar cada um sequencialmente
+    files.forEach((file, index) => {
+      setTimeout(() => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(file.blob);
+        link.download = file.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }, index * 500); // Pequeno delay entre downloads
+    });
   }
 }
 
@@ -239,25 +375,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Configurar os uploads de arquivos
   imageUpload.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      selectedImage = e.target.files[0];
-      compressImageBtn.disabled = false;
-    }
+    selectedImages = Array.from(e.target.files);
+    updateFilesList('image');
+    compressImageBtn.disabled = selectedImages.length === 0;
   });
   
   videoUpload.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      selectedVideo = e.target.files[0];
-      compressVideoBtn.disabled = false;
-    }
+    selectedVideos = Array.from(e.target.files);
+    updateFilesList('video');
+    compressVideoBtn.disabled = selectedVideos.length === 0;
   });
   
   // Configurar os botões de compressão
   compressImageBtn.addEventListener('click', () => {
-    compressImage(selectedImage);
+    compressImages(selectedImages);
   });
   
   compressVideoBtn.addEventListener('click', () => {
-    compressVideo(selectedVideo);
+    compressVideos(selectedVideos);
+  });
+  
+  // Suporte para drag and drop
+  const imageUploadLabel = document.querySelector('label[for="image-upload"]');
+  const videoUploadLabel = document.querySelector('label[for="video-upload"]');
+  
+  [imageUploadLabel, videoUploadLabel].forEach(label => {
+    label.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      label.style.borderColor = 'var(--primary-color)';
+      label.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+    });
+    
+    label.addEventListener('dragleave', () => {
+      label.style.borderColor = 'var(--border-color)';
+      label.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+    });
+    
+    label.addEventListener('drop', (e) => {
+      e.preventDefault();
+      label.style.borderColor = 'var(--border-color)';
+      label.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+      
+      const input = label.querySelector('input[type="file"]');
+      input.files = e.dataTransfer.files;
+      
+      const event = new Event('change', { bubbles: true });
+      input.dispatchEvent(event);
+    });
   });
 });

@@ -24,10 +24,11 @@
       <h2>Compressor de Imagens</h2>
       <div class="upload-container">
         <label for="image-upload" class="upload-label">
-          <span>Selecione ou arraste uma imagem</span>
-          <input type="file" id="image-upload" accept="image/*" hidden>
+          <span>Selecione ou arraste uma ou mais imagens</span>
+          <input type="file" id="image-upload" accept="image/*" multiple hidden>
         </label>
       </div>
+      <div id="image-files-list" class="files-list"></div>
       <div class="settings">
         <div class="setting">
           <label for="image-quality">Qualidade:</label>
@@ -39,7 +40,7 @@
           <input type="number" id="image-max-width" min="100" max="4000" value="1920">
         </div>
       </div>
-      <button id="compress-image-btn" class="compress-btn" disabled>Comprimir Imagem</button>
+      <button id="compress-image-btn" class="compress-btn" disabled>Comprimir Imagens</button>
       <div class="result" id="image-result"></div>
     </div>
     
@@ -47,10 +48,11 @@
       <h2>Compressor de Vídeos</h2>
       <div class="upload-container">
         <label for="video-upload" class="upload-label">
-          <span>Selecione ou arraste um vídeo</span>
-          <input type="file" id="video-upload" accept="video/*" hidden>
+          <span>Selecione ou arraste um ou mais vídeos</span>
+          <input type="file" id="video-upload" accept="video/*" multiple hidden>
         </label>
       </div>
+      <div id="video-files-list" class="files-list"></div>
       <div class="settings">
         <div class="setting">
           <label for="video-quality">Qualidade:</label>
@@ -66,7 +68,7 @@
           <span id="video-crf-value">23</span>
         </div>
       </div>
-      <button id="compress-video-btn" class="compress-btn" disabled>Comprimir Vídeo</button>
+      <button id="compress-video-btn" class="compress-btn" disabled>Comprimir Vídeos</button>
       <div class="result" id="video-result"></div>
     </div>
     
